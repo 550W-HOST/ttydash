@@ -4,11 +4,7 @@ use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use derive_deref::{Deref, DerefMut};
 use ratatui::prelude::Rect;
-use tokio::{
-    io::{stdin, AsyncBufReadExt},
-    sync::mpsc,
-    task,
-};
+use tokio::sync::mpsc;
 use tracing::{debug, info};
 
 use crate::{
@@ -66,27 +62,6 @@ impl KeyBindings {
     }
 }
 
-// Function to receive data asynchronously and send it via mpsc channel
-async fn receive_data(sender: mpsc::Sender<f32>) {
-    let stdin = stdin();
-    let mut reader = tokio::io::BufReader::new(stdin);
-    let mut line = String::new();
-    while let Ok(n) = reader.read_line(&mut line).await {
-        if n == 0 {
-            break;
-        }
-        // parse the line as a float and send it
-        if let Ok(data) = line.trim().parse::<f32>() {
-            if let Err(_) = sender.send(data).await {
-                break;
-            }
-        }
-        line.clear();
-    }
-    // Drop the sender to signal that we are done
-    drop(sender);
-}
-
 pub struct App {
     tick_rate: f64,
     frame_rate: f64,
@@ -96,14 +71,12 @@ pub struct App {
     last_tick_key_events: Vec<KeyEvent>,
     action_tx: mpsc::UnboundedSender<Action>,
     action_rx: mpsc::UnboundedReceiver<Action>,
-    data_tx: mpsc::Sender<f64>,
     keybindings: KeyBindings,
 }
 
 impl App {
     pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
-        let (data_tx, data_rx) = mpsc::channel::<f64>(100);
         let mut keybindings = KeyBindings::new();
         keybindings.bind_keys(
             vec![
@@ -123,16 +96,12 @@ impl App {
         Ok(Self {
             tick_rate,
             frame_rate,
-            components: vec![
-                Box::new(Dash::new(data_rx)),
-                Box::new(FpsCounter::default()),
-            ],
+            components: vec![Box::new(Dash::new()), Box::new(FpsCounter::default())],
             should_quit: false,
             should_suspend: false,
             last_tick_key_events: Vec::new(),
             action_tx,
             action_rx,
-            data_tx,
             keybindings,
         })
     }
@@ -151,12 +120,6 @@ impl App {
         }
 
         let action_tx = self.action_tx.clone();
-
-        // Spawn a tokio task to receive data asynchronously
-        let tx_clone = self.data_tx.clone();
-        task::spawn(async move {
-            receive_data(tx_clone).await;
-        });
 
         loop {
             self.handle_events(&mut tui).await?;
