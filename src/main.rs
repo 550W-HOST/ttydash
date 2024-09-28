@@ -18,5 +18,7 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
     let mut app = App::new(args.tick_rate, args.frame_rate, args.title, args.unit)?;
     app.run().await?;
+
+    #[allow(clippy::needless_return)]
     Ok(())
 }
