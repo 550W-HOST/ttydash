@@ -11,6 +11,7 @@ use lazy_static::lazy_static;
 use ratatui::{prelude::*, widgets::*};
 use regex::Regex;
 
+use symbols::bar;
 use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
 use tracing::{debug, info};
 
@@ -43,7 +44,7 @@ impl DashState {
 
 impl Default for DashState {
     fn default() -> Self {
-        Self::new(100)
+        Self::new(200)
     }
 }
 
@@ -57,7 +58,7 @@ impl Dash {
     pub fn new() -> Self {
         let instance = Self {
             command_tx: None,
-            state: Arc::new(RwLock::new(DashState::new(100))),
+            state: Arc::new(RwLock::new(DashState::default())),
         };
         let cloned_instance = instance.clone();
         task::spawn(cloned_instance.update_chart());
@@ -104,7 +105,7 @@ impl Component for Dash {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let width = (area.width - 1) / 2;
+        let width = area.width - 1;
         let state = self.state.read().unwrap();
         let chart_state = &state.chart_state;
 
@@ -123,9 +124,9 @@ impl Component for Dash {
         let mut span_vec = vec![];
         let mut last_label_len = 0;
         for &time in &time_labels {
-            let pos = (width - time - 1) * 2;
-            if pos < (width * 2) {
-                span_vec.push(Span::raw("─".repeat(60 - last_label_len)));
+            let pos = width - time - 1;
+            if pos < (width) {
+                span_vec.push(Span::raw("─".repeat(30 - last_label_len)));
                 span_vec.push(Span::raw("├"));
                 span_vec.push(Span::styled(format!("{}s", time), Style::default().gray()));
                 last_label_len = format!("{}s", time).len() + 1;
@@ -133,8 +134,22 @@ impl Component for Dash {
         }
         span_vec.reverse();
 
+        let mut bar_set = bar::Set::default();
+        bar_set.full = "⣿";
+        bar_set.seven_eighths = "⣾";
+        bar_set.three_quarters = "⣶";
+        bar_set.five_eighths = "⣴";
+        bar_set.half = "⣤";
+        bar_set.three_eighths = "⣠";
+        bar_set.one_quarter = "⣀";
+        bar_set.one_eighth = "⢀";
+        bar_set.empty = "⠀";
+
         let chart = BarChart::default()
             .data(BarGroup::default().bars(&bars))
+            .bar_set(bar_set)
+            .bar_gap(0)
+            .bar_style(Style::default().fg(Color::Green))
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
@@ -144,7 +159,6 @@ impl Component for Dash {
                     .borders(Borders::ALL),
             )
             .bar_width(1);
-
         frame.render_widget(chart, area);
         Ok(())
     }
