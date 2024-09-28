@@ -2,9 +2,6 @@ use std::sync::{Arc, RwLock};
 
 use super::Component;
 use crate::action::Action;
-// use crate::components::barchart::Bar;
-// use crate::components::barchart::BarChart;
-// use crate::components::barchart::BarGroup;
 use color_eyre::Result;
 
 use lazy_static::lazy_static;
@@ -14,69 +11,23 @@ use regex::Regex;
 use symbols::bar;
 use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
 
-fn extract_ping(input: &str) -> Option<(&str, &str)> {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(
-            r"(?P<bytes>\d+) bytes from (?P<from>.*): icmp_seq=\d+ ttl=\d+ time=(?P<ping>\d+) ms"
-        )
-        .unwrap();
-    }
-    RE.captures(input).and_then(|cap| {
-        let ping = cap.name("ping")?.as_str();
-        let from = cap.name("from")?.as_str();
-        Some((ping, from))
-    })
-}
-
-#[derive(Debug)]
-enum DataType {
-    Ping,
-}
-
-#[derive(Debug)]
-struct MetaData {
-    data_type: DataType,
-    from: String,
-}
-
-impl MetaData {
-    fn new(data_type: DataType, from: &str) -> Self {
-        Self {
-            data_type,
-            from: from.to_owned(),
-        }
-    }
-
-    fn from_ping(from: &str) -> Self {
-        Self::new(DataType::Ping, from)
-    }
-
-    fn to_title(&self) -> String {
-        match self.data_type {
-            DataType::Ping => {
-                format!("Ping Chart from: {}", self.from)
-            }
-        }
-    }
-}
-
 #[derive(Debug)]
 struct DashState {
-    chart_state: Vec<f64>,
-    meta_data: MetaData,
+    data: Vec<f64>,
+    unit: String,
 }
 
 impl DashState {
     fn new(size: usize) -> Self {
         Self {
-            chart_state: vec![0.0; size],
-            meta_data: MetaData::new(DataType::Ping, "localhost"),
+            data: vec![0.0; size],
+            unit: String::new(),
         }
     }
 
     fn update(&mut self, value: f64) {
-        self.chart_state.rotate_left(1);
-        self.chart_state[0] = value;
+        self.data.rotate_left(1);
+        self.data[0] = value;
     }
 }
 
@@ -120,23 +71,15 @@ impl Dash {
         let stdin = tokio::io::stdin();
         let mut lines = tokio::io::BufReader::new(stdin).lines();
         loop {
-            let line = lines.next_line().await.unwrap().unwrap();
-            let match_loop = || -> Option<()> {
-                match extract_ping(&line) {
-                    Some((ping, from)) => {
-                        let value = ping.parse::<f64>().unwrap();
-                        let mut state = self.state.write().unwrap();
-                        state.update(value);
-                        state.meta_data = MetaData::from_ping(from);
-                    }
-                    None => return None,
-                };
-                Some(())
-            };
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            if match_loop().is_none() {
-                continue;
-            }
+            let line = lines.next_line().await.unwrap().unwrap();
+            let mut state = self.state.write().unwrap();
+            let value = line
+                .split_whitespace()
+                .next()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(0.0);
+            state.update(value);
         }
     }
 }
@@ -163,7 +106,7 @@ impl Component for Dash {
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let width = area.width - 1;
         let state = self.state.read().unwrap();
-        let chart_state = &state.chart_state;
+        let chart_state = &state.data;
 
         let len = chart_state.len();
         let start = len.saturating_sub(width as usize);
@@ -197,7 +140,7 @@ impl Component for Dash {
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
-                    .title(Line::from(state.meta_data.to_title()).centered())
+                    .title(Line::from(state.unit.clone()).centered())
                     .title_bottom(Line::from(span_vec))
                     .title_alignment(Alignment::Right)
                     .borders(Borders::ALL),
