@@ -6,11 +6,15 @@
 [![dependency status](https://deps.rs/repo/github/550w-host/ttydash/status.svg?style=flat-square)](https://deps.rs/repo/github/550w-host/ttydash)
 ![Crates.io License](https://img.shields.io/crates/l/ttydash?style=flat-square) ![Crates.io Size](https://img.shields.io/crates/size/ttydash?style=flat-square)
 
-
-
 ## Snapshot
 
 ![ttydash](./assets/Snipaste.png)
+
+## Installation
+
+```bash
+cargo install ttydash
+```
 
 ## Usage
 
