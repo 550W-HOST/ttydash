@@ -75,7 +75,12 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
+    pub fn new(
+        tick_rate: f64,
+        frame_rate: f64,
+        title: Option<String>,
+        units: Option<String>,
+    ) -> Result<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         let mut keybindings = KeyBindings::new();
         keybindings.bind_keys(
@@ -96,7 +101,10 @@ impl App {
         Ok(Self {
             tick_rate,
             frame_rate,
-            components: vec![Box::new(Dash::new()), Box::new(FpsCounter::default())],
+            components: vec![
+                Box::new(Dash::new(title, units)),
+                Box::new(FpsCounter::default()),
+            ],
             should_quit: false,
             should_suspend: false,
             last_tick_key_events: Vec::new(),

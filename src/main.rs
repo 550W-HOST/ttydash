@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
     logging::init()?;
 
     let args = Cli::parse();
-    let mut app = App::new(args.tick_rate, args.frame_rate)?;
+    let mut app = App::new(args.tick_rate, args.frame_rate, args.title, args.unit)?;
     app.run().await?;
     Ok(())
 }

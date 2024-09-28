@@ -39,13 +39,15 @@ impl Default for DashState {
 
 #[derive(Debug, Default, Clone)]
 pub struct Dash {
+    title: Option<String>,
+    unit: Option<String>,
     command_tx: Option<UnboundedSender<Action>>,
     state: Arc<RwLock<DashState>>,
     bar_set: bar::Set,
 }
 
 impl Dash {
-    pub fn new() -> Self {
+    pub fn new(title: Option<String>, unit: Option<String>) -> Self {
         let bar_set = bar::Set {
             full: "⣿",
             seven_eighths: "⣾",
@@ -58,6 +60,8 @@ impl Dash {
             empty: "⠀",
         };
         let instance = Self {
+            title,
+            unit,
             command_tx: None,
             state: Arc::new(RwLock::new(DashState::default())),
             bar_set,
@@ -104,6 +108,8 @@ impl Component for Dash {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let title = self.title.clone().unwrap_or_default();
+
         let width = area.width - 1;
         let state = self.state.read().unwrap();
         let chart_state = &state.data;
@@ -140,7 +146,7 @@ impl Component for Dash {
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
-                    .title(Line::from(state.unit.clone()).centered())
+                    .title(Line::from(title).centered())
                     .title_bottom(Line::from(span_vec))
                     .title_alignment(Alignment::Right)
                     .borders(Borders::ALL),
