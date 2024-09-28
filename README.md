@@ -1,6 +1,12 @@
 # ttydash
 
-[![CI](https://github.com/550W-HOST/ttydash/actions/workflows/ci.yml/badge.svg)](https://github.com/550W-HOST/ttydash/actions/workflows/ci.yml)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/550W-HOST/ttydash/ci.yml?style=flat-square&logo=github)
+ ![Crates.io Version](https://img.shields.io/crates/v/ttydash?style=flat-square&logo=rust)
+ ![Crates.io Downloads (recent)](https://img.shields.io/crates/dr/ttydash?style=flat-square)
+[![dependency status](https://deps.rs/repo/github/550w-host/ttydash/status.svg?style=flat-square)](https://deps.rs/repo/github/550w-host/ttydash)
+![Crates.io License](https://img.shields.io/crates/l/ttydash?style=flat-square) ![Crates.io Size](https://img.shields.io/crates/size/ttydash?style=flat-square)
+
+
 
 ## Snapshot
 
