@@ -1,6 +1,6 @@
 [package]
 name = "ttydash"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A rust based tty plot"
 authors = ["PuQing <me@puqing.work>"]
