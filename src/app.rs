@@ -13,6 +13,8 @@ use crate::{
     tui::{Event, Tui},
 };
 
+use crate::cli::Unit;
+
 #[derive(Clone, Debug, Default, Deref, DerefMut)]
 pub struct KeyBindings {
     bindings: HashMap<Vec<KeyEvent>, Action>,
@@ -79,7 +81,7 @@ impl App {
         tick_rate: f64,
         frame_rate: f64,
         title: Option<String>,
-        units: Option<String>,
+        units: Vec<Unit>,
     ) -> Result<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         let mut keybindings = KeyBindings::new();

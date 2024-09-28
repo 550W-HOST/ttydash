@@ -1,12 +1,10 @@
 use std::sync::{Arc, RwLock};
 
 use super::Component;
-use crate::action::Action;
+use crate::{action::Action, cli::Unit};
 use color_eyre::Result;
 
-use lazy_static::lazy_static;
 use ratatui::{prelude::*, widgets::*};
-use regex::Regex;
 
 use symbols::bar;
 use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
@@ -40,14 +38,14 @@ impl Default for DashState {
 #[derive(Debug, Default, Clone)]
 pub struct Dash {
     title: Option<String>,
-    unit: Option<String>,
+    units: Vec<Unit>,
     command_tx: Option<UnboundedSender<Action>>,
     state: Arc<RwLock<DashState>>,
     bar_set: bar::Set,
 }
 
 impl Dash {
-    pub fn new(title: Option<String>, unit: Option<String>) -> Self {
+    pub fn new(title: Option<String>, unit: Vec<Unit>) -> Self {
         let bar_set = bar::Set {
             full: "⣿",
             seven_eighths: "⣾",
@@ -61,7 +59,7 @@ impl Dash {
         };
         let instance = Self {
             title,
-            unit,
+            units: unit,
             command_tx: None,
             state: Arc::new(RwLock::new(DashState::default())),
             bar_set,
@@ -78,12 +76,27 @@ impl Dash {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             let line = lines.next_line().await.unwrap().unwrap();
             let mut state = self.state.write().unwrap();
-            let value = line
-                .split_whitespace()
-                .next()
-                .and_then(|v| v.parse::<f64>().ok())
-                .unwrap_or(0.0);
-            state.update(value);
+            if !self.units.is_empty() {
+                for unit in &self.units {
+                    let unit_str = unit.to_string();
+                    // parse the value with the unit
+                    let re = regex::Regex::new(&format!(r"(?i)\b(\d+(\.\d+)?)\s*{}\b", unit_str))
+                        .unwrap();
+                    if let Some(captures) = re.captures(&line) {
+                        let value = captures
+                            .get(1)
+                            .and_then(|v| v.as_str().parse::<f64>().ok())
+                            .unwrap_or(0.0);
+                        state.update(value);
+                        state.unit = unit_str.to_string();
+                        break;
+                    }
+                }
+            } else if let Some(value_str) = line.split_whitespace().next() {
+                if let Ok(value) = value_str.parse::<f64>() {
+                    state.update(value);
+                }
+            }
         }
     }
 }
