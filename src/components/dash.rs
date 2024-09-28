@@ -1,24 +1,18 @@
 use std::sync::{Arc, RwLock};
 
-use color_eyre::Result;
-use ratatui::{prelude::*, widgets::*};
-use symbols::Marker;
-use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
-use tracing::info;
-
 use super::Component;
 use crate::action::Action;
 use crate::components::barchart::Bar;
 use crate::components::barchart::BarChart;
 use crate::components::barchart::BarGroup;
+use color_eyre::Result;
 use lazy_static::lazy_static;
+use ratatui::{prelude::*, widgets::*};
 use regex::Regex;
+use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
+use tracing::{debug, info};
 
 fn extract_ping(input: &str) -> Option<&str> {
-    // paser the ping value from the line
-    // PING puqing.work (2606:4700:3037::6815:2eae) 56 data bytes
-    // 64 bytes from 2606:4700:3037::6815:2eae: icmp_seq=1 ttl=52 time=198 ms
-    // 64 bytes from 2606:4700:3037::6815:2eae: icmp_seq=2 ttl=52 time=221 ms
     lazy_static! {
         static ref RE: Regex =
             Regex::new(r"(\d+) bytes from .*: icmp_seq=\d+ ttl=\d+ time=(?P<ping>\d+) ms").unwrap();
@@ -27,9 +21,24 @@ fn extract_ping(input: &str) -> Option<&str> {
         .and_then(|cap| cap.name("ping").map(|ping| ping.as_str()))
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct DashState {
-    chart_state: Vec<f64>,
+    chart_state: [f64; 96],
+}
+
+impl Default for DashState {
+    fn default() -> Self {
+        Self {
+            chart_state: [0.0; 96],
+        }
+    }
+}
+
+impl DashState {
+    fn update(&mut self, value: f64) {
+        self.chart_state.rotate_left(1);
+        self.chart_state[0] = value;
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -44,8 +53,8 @@ impl Dash {
             command_tx: None,
             state: Arc::new(RwLock::new(DashState::default())),
         };
-        let this = instance.clone();
-        task::spawn(this.update_chart());
+        let cloned_instance = instance.clone();
+        task::spawn(cloned_instance.update_chart());
         instance
     }
 
@@ -58,7 +67,7 @@ impl Dash {
                 let ping = extract_ping(&line)?;
                 let value: f64 = ping.parse().ok()?;
                 let mut state = self.state.write().unwrap();
-                state.chart_state.push(value);
+                state.update(value);
                 Some(())
             };
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -89,23 +98,28 @@ impl Component for Dash {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        let width = (area.width - 1) / 2;
+
         let state = self.state.read().unwrap();
-        // every data will convert to u64 for now
-        let bars = state
-            .chart_state
+        let chart_state = &state.chart_state;
+
+        let len = chart_state.len();
+        let start = len.saturating_sub(width as usize);
+        let bars = chart_state[start..]
             .iter()
             .map(|&value| Bar::default().value(value as u64))
             .collect::<Vec<_>>();
+
         let chart = BarChart::default()
             .data(BarGroup::default().bars(&bars))
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
-                    .border_style(style::Color::White)
                     .title("Ping Chart")
                     .borders(Borders::ALL),
             )
             .bar_width(1);
+
         frame.render_widget(chart, area);
         Ok(())
     }
