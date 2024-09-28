@@ -2,6 +2,10 @@
 
 [![CI](https://github.com/550W-HOST/ttydash/actions/workflows/ci.yml/badge.svg)](https://github.com/550W-HOST/ttydash/actions/workflows/ci.yml)
 
+## Snapshot
+
+![ttydash](./assets/Snipaste.png)
+
 ## Usage
 
 ### Example 1
