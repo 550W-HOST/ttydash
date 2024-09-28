@@ -15,24 +15,69 @@ use symbols::bar;
 use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
 use tracing::{debug, info};
 
-fn extract_ping(input: &str) -> Option<&str> {
+fn extract_ping(input: &str) -> Option<(&str, &str)> {
     lazy_static! {
-        static ref RE: Regex =
-            Regex::new(r"(\d+) bytes from .*: icmp_seq=\d+ ttl=\d+ time=(?P<ping>\d+) ms").unwrap();
+        static ref RE: Regex = Regex::new(
+            r"(?P<bytes>\d+) bytes from (?P<from>.*): icmp_seq=\d+ ttl=\d+ time=(?P<ping>\d+) ms"
+        )
+        .unwrap();
     }
-    RE.captures(input)
-        .and_then(|cap| cap.name("ping").map(|ping| ping.as_str()))
+    RE.captures(input).and_then(|cap| {
+        let ping = cap.name("ping")?.as_str();
+        let from = cap.name("from")?.as_str();
+        Some((ping, from))
+    })
+}
+
+#[derive(Debug)]
+enum DataType {
+    Ping,
+    Traceroute,
+}
+
+#[derive(Debug)]
+struct MetaData {
+    data_type: DataType,
+    from: String,
+}
+
+impl MetaData {
+    fn new(data_type: DataType, from: &str) -> Self {
+        Self {
+            data_type,
+            from: from.to_owned(),
+        }
+    }
+
+    fn from_ping(from: &str) -> Self {
+        Self::new(DataType::Ping, from)
+    }
+
+    fn from_traceroute(from: &str) -> Self {
+        Self::new(DataType::Traceroute, from)
+    }
+
+    fn to_title(&self) -> String {
+        match self.data_type {
+            DataType::Ping => {
+                format!("Ping Chart from: {}", self.from)
+            }
+            DataType::Traceroute => format!("Traceroute Chart from: {}", self.from),
+        }
+    }
 }
 
 #[derive(Debug)]
 struct DashState {
     chart_state: Vec<f64>,
+    meta_data: MetaData,
 }
 
 impl DashState {
     fn new(size: usize) -> Self {
         Self {
             chart_state: vec![0.0; size],
+            meta_data: MetaData::new(DataType::Ping, "localhost"),
         }
     }
 
@@ -52,13 +97,25 @@ impl Default for DashState {
 pub struct Dash {
     command_tx: Option<UnboundedSender<Action>>,
     state: Arc<RwLock<DashState>>,
+    bar_set: bar::Set,
 }
 
 impl Dash {
     pub fn new() -> Self {
+        let mut bar_set = bar::Set::default();
+        bar_set.full = "⣿";
+        bar_set.seven_eighths = "⣾";
+        bar_set.three_quarters = "⣶";
+        bar_set.five_eighths = "⣴";
+        bar_set.half = "⣤";
+        bar_set.three_eighths = "⣠";
+        bar_set.one_quarter = "⣀";
+        bar_set.one_eighth = "⢀";
+        bar_set.empty = "⠀";
         let instance = Self {
             command_tx: None,
             state: Arc::new(RwLock::new(DashState::default())),
+            bar_set,
         };
         let cloned_instance = instance.clone();
         task::spawn(cloned_instance.update_chart());
@@ -71,10 +128,15 @@ impl Dash {
         loop {
             let line = lines.next_line().await.unwrap().unwrap();
             let match_loop = || -> Option<()> {
-                let ping = extract_ping(&line)?;
-                let value: f64 = ping.parse().ok()?;
-                let mut state = self.state.write().unwrap();
-                state.update(value);
+                match extract_ping(&line) {
+                    Some((ping, from)) => {
+                        let value = ping.parse::<f64>().unwrap();
+                        let mut state = self.state.write().unwrap();
+                        state.update(value);
+                        state.meta_data = MetaData::from_ping(from);
+                    }
+                    None => return None,
+                };
                 Some(())
             };
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -133,27 +195,15 @@ impl Component for Dash {
             }
         }
         span_vec.reverse();
-
-        let mut bar_set = bar::Set::default();
-        bar_set.full = "⣿";
-        bar_set.seven_eighths = "⣾";
-        bar_set.three_quarters = "⣶";
-        bar_set.five_eighths = "⣴";
-        bar_set.half = "⣤";
-        bar_set.three_eighths = "⣠";
-        bar_set.one_quarter = "⣀";
-        bar_set.one_eighth = "⢀";
-        bar_set.empty = "⠀";
-
         let chart = BarChart::default()
             .data(BarGroup::default().bars(&bars))
-            .bar_set(bar_set)
+            .bar_set(self.bar_set.clone())
             .bar_gap(0)
             .bar_style(Style::default().fg(Color::Green))
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
-                    .title("Ping Chart")
+                    .title(Line::from(state.meta_data.to_title()).centered())
                     .title_bottom(Line::from(span_vec))
                     .title_alignment(Alignment::Right)
                     .borders(Borders::ALL),
