@@ -13,6 +13,10 @@ use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
 struct DashState {
     data: Vec<f64>,
     unit: String,
+    true_length: usize,
+    min: f64,
+    max: f64,
+    avg: f64,
 }
 
 impl DashState {
@@ -20,12 +24,27 @@ impl DashState {
         Self {
             data: vec![0.0; size],
             unit: String::new(),
+            true_length: 0,
+            min: f64::INFINITY,
+            max: f64::NEG_INFINITY,
+            avg: 0.0,
         }
+    }
+
+    fn calculate_stats(&mut self) {
+        let data_slice = &self.data[self.data.len() - self.true_length..];
+        let sum: f64 = data_slice.iter().sum();
+        let len = data_slice.len() as f64;
+        self.avg = sum / len;
+        self.min = data_slice.iter().copied().fold(f64::INFINITY, f64::min);
+        self.max = data_slice.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     }
 
     fn update(&mut self, value: f64) {
         self.data.rotate_left(1);
         self.data[0] = value;
+        self.calculate_stats();
+        self.true_length = std::cmp::min(self.true_length + 1, self.data.len());
     }
 }
 
@@ -122,7 +141,6 @@ impl Component for Dash {
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let title = self.title.clone().unwrap_or_default();
-
         let width = area.width - 1;
         let state = self.state.read().unwrap();
         let chart_state = &state.data;
@@ -166,6 +184,19 @@ impl Component for Dash {
             )
             .bar_width(1);
         frame.render_widget(chart, area);
+
+        let [top, _] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+
+        let message = format!(
+            "Avg: {:.2} {} Min: {:.2} {} Max: {:.2} {}",
+            state.avg, state.unit, state.min, state.unit, state.max, state.unit
+        );
+        let span = Span::styled(message, Style::new().dim());
+        let paragraph = Paragraph::new(span)
+            .left_aligned()
+            .block(Block::default().padding(Padding::horizontal(2)));
+        frame.render_widget(paragraph, top);
+
         Ok(())
     }
 }

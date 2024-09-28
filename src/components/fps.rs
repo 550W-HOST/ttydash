@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Style, Stylize},
     text::Span,
-    widgets::Paragraph,
+    widgets::{Block, Padding, Paragraph},
     Frame,
 };
 
@@ -84,7 +84,9 @@ impl Component for FpsCounter {
             self.ticks_per_second, self.frames_per_second
         );
         let span = Span::styled(message, Style::new().dim());
-        let paragraph = Paragraph::new(span).right_aligned();
+        let paragraph = Paragraph::new(span)
+            .right_aligned()
+            .block(Block::default().padding(Padding::horizontal(2)));
         frame.render_widget(paragraph, top);
         Ok(())
     }
