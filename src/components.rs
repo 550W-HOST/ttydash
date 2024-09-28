@@ -8,7 +8,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{action::Action, tui::Event};
 
-pub mod barchart;
+// pub mod barchart;
 pub mod dash;
 pub mod fps;
 

@@ -2,9 +2,9 @@ use std::sync::{Arc, RwLock};
 
 use super::Component;
 use crate::action::Action;
-use crate::components::barchart::Bar;
-use crate::components::barchart::BarChart;
-use crate::components::barchart::BarGroup;
+// use crate::components::barchart::Bar;
+// use crate::components::barchart::BarChart;
+// use crate::components::barchart::BarGroup;
 use color_eyre::Result;
 
 use lazy_static::lazy_static;
@@ -13,7 +13,6 @@ use regex::Regex;
 
 use symbols::bar;
 use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
-use tracing::{debug, info};
 
 fn extract_ping(input: &str) -> Option<(&str, &str)> {
     lazy_static! {
@@ -32,7 +31,6 @@ fn extract_ping(input: &str) -> Option<(&str, &str)> {
 #[derive(Debug)]
 enum DataType {
     Ping,
-    Traceroute,
 }
 
 #[derive(Debug)]
@@ -53,16 +51,11 @@ impl MetaData {
         Self::new(DataType::Ping, from)
     }
 
-    fn from_traceroute(from: &str) -> Self {
-        Self::new(DataType::Traceroute, from)
-    }
-
     fn to_title(&self) -> String {
         match self.data_type {
             DataType::Ping => {
                 format!("Ping Chart from: {}", self.from)
             }
-            DataType::Traceroute => format!("Traceroute Chart from: {}", self.from),
         }
     }
 }
@@ -102,16 +95,17 @@ pub struct Dash {
 
 impl Dash {
     pub fn new() -> Self {
-        let mut bar_set = bar::Set::default();
-        bar_set.full = "⣿";
-        bar_set.seven_eighths = "⣾";
-        bar_set.three_quarters = "⣶";
-        bar_set.five_eighths = "⣴";
-        bar_set.half = "⣤";
-        bar_set.three_eighths = "⣠";
-        bar_set.one_quarter = "⣀";
-        bar_set.one_eighth = "⢀";
-        bar_set.empty = "⠀";
+        let bar_set = bar::Set {
+            full: "⣿",
+            seven_eighths: "⣾",
+            three_quarters: "⣶",
+            five_eighths: "⣴",
+            half: "⣤",
+            three_eighths: "⣠",
+            one_quarter: "⣀",
+            one_eighth: "⢀",
+            empty: "⠀",
+        };
         let instance = Self {
             command_tx: None,
             state: Arc::new(RwLock::new(DashState::default())),
@@ -140,7 +134,7 @@ impl Dash {
                 Some(())
             };
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            if let Some(_) = match_loop() {
+            if match_loop().is_none() {
                 continue;
             }
         }
