@@ -6,9 +6,11 @@ use crate::components::barchart::Bar;
 use crate::components::barchart::BarChart;
 use crate::components::barchart::BarGroup;
 use color_eyre::Result;
+
 use lazy_static::lazy_static;
 use ratatui::{prelude::*, widgets::*};
 use regex::Regex;
+
 use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
 use tracing::{debug, info};
 
@@ -23,21 +25,25 @@ fn extract_ping(input: &str) -> Option<&str> {
 
 #[derive(Debug)]
 struct DashState {
-    chart_state: [f64; 96],
+    chart_state: Vec<f64>,
+}
+
+impl DashState {
+    fn new(size: usize) -> Self {
+        Self {
+            chart_state: vec![0.0; size],
+        }
+    }
+
+    fn update(&mut self, value: f64) {
+        self.chart_state.rotate_left(1);
+        self.chart_state[0] = value;
+    }
 }
 
 impl Default for DashState {
     fn default() -> Self {
-        Self {
-            chart_state: [0.0; 96],
-        }
-    }
-}
-
-impl DashState {
-    fn update(&mut self, value: f64) {
-        self.chart_state.rotate_left(1);
-        self.chart_state[0] = value;
+        Self::new(100)
     }
 }
 
@@ -51,7 +57,7 @@ impl Dash {
     pub fn new() -> Self {
         let instance = Self {
             command_tx: None,
-            state: Arc::new(RwLock::new(DashState::default())),
+            state: Arc::new(RwLock::new(DashState::new(100))),
         };
         let cloned_instance = instance.clone();
         task::spawn(cloned_instance.update_chart());
@@ -99,7 +105,6 @@ impl Component for Dash {
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let width = (area.width - 1) / 2;
-
         let state = self.state.read().unwrap();
         let chart_state = &state.chart_state;
 
@@ -110,12 +115,32 @@ impl Component for Dash {
             .map(|&value| Bar::default().value(value as u64))
             .collect::<Vec<_>>();
 
+        let max_time = width;
+        let time_labels = (1..)
+            .map(|i| i * 30)
+            .take_while(|&t| t <= max_time - 5)
+            .collect::<Vec<_>>();
+        let mut span_vec = vec![];
+        let mut last_label_len = 0;
+        for &time in &time_labels {
+            let pos = (width - time - 1) * 2;
+            if pos < (width * 2) {
+                span_vec.push(Span::raw("─".repeat(60 - last_label_len)));
+                span_vec.push(Span::raw("├"));
+                span_vec.push(Span::styled(format!("{}s", time), Style::default().gray()));
+                last_label_len = format!("{}s", time).len() + 1;
+            }
+        }
+        span_vec.reverse();
+
         let chart = BarChart::default()
             .data(BarGroup::default().bars(&bars))
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
                     .title("Ping Chart")
+                    .title_bottom(Line::from(span_vec))
+                    .title_alignment(Alignment::Right)
                     .borders(Borders::ALL),
             )
             .bar_width(1);
