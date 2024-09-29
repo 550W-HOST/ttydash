@@ -7,7 +7,7 @@ authors = ["PuQing <me@puqing.work>"]
 build = "build.rs"
 repository = "https://github.com/550W-HOST/ttydash"
 license = "MIT"
-exclude = [".github", "assets/"]
+include = ["src/**/*", "Cargo.toml", "LICENSE"]
 keywords = ["tty", "plot", "dashboard", "cli", "terminal"]
 
 [dependencies]
@@ -52,3 +52,9 @@ unicode-width = "0.2.0"
 [build-dependencies]
 anyhow = "1.0.86"
 vergen-gix = { version = "1.0.0", features = ["build", "cargo"] }
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+opt-level = "z"
