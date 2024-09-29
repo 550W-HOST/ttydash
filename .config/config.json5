@@ -6,5 +6,10 @@
             "<Ctrl-c>": "Quit",
             "<Ctrl-z>": "Suspend"
         }
+    },
+    "match_rules": {
+        "Home": {
+            "ping": "time=(\\d+\\.\\d+) ms"
+        }
     }
 }

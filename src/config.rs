@@ -1,5 +1,4 @@
-#![allow(dead_code)] // Remove this once you start using the code
-
+#![allow(dead_code)]
 use std::{collections::HashMap, env, path::PathBuf};
 
 use color_eyre::Result;
@@ -31,6 +30,8 @@ pub struct Config {
     pub keybindings: KeyBindings,
     #[serde(default)]
     pub styles: Styles,
+    #[serde(default)]
+    pub match_rules: MatchRule,
 }
 
 lazy_static! {
@@ -91,9 +92,26 @@ impl Config {
                 user_styles.entry(style_key.clone()).or_insert(*style);
             }
         }
+        for (mode, default_rules) in default_config.match_rules.iter() {
+            let user_rules = cfg.match_rules.entry(*mode).or_default();
+            for (rule_key, rule) in default_rules.iter() {
+                user_rules.entry(rule_key.clone()).or_insert(rule.clone());
+            }
+        }
 
         Ok(cfg)
     }
+}
+
+pub fn get_regexes() -> Result<HashMap<String, String>> {
+    let config = Config::new()?;
+    let mut regexes = HashMap::new();
+    for (_, rules) in config.match_rules.iter() {
+        for (name, regex) in rules.iter() {
+            regexes.insert(name.clone(), regex.clone());
+        }
+    }
+    Ok(regexes)
 }
 
 pub fn get_data_dir() -> PathBuf {
@@ -444,6 +462,19 @@ fn parse_color(s: &str) -> Option<Color> {
         Some(Color::Indexed(7))
     } else {
         None
+    }
+}
+
+#[derive(Clone, Debug, Default, Deref, DerefMut)]
+pub struct MatchRule(pub HashMap<Mode, HashMap<String, String>>);
+
+impl<'de> Deserialize<'de> for MatchRule {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let parsed_map = HashMap::<Mode, HashMap<String, String>>::deserialize(deserializer)?;
+        Ok(MatchRule(parsed_map))
     }
 }
 

@@ -1,4 +1,6 @@
+use clap::Args;
 use clap::Parser;
+use clap::Subcommand;
 use clap::ValueEnum;
 use std::str::FromStr;
 use strum::Display;
@@ -54,6 +56,35 @@ pub struct Cli {
     /// Unit to be used in the chart
     #[arg(short, long)]
     pub unit: Vec<Unit>,
+
+    #[command(subcommand)]
+    pub cmd: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Add a new regex to the list of regexes
+    Add(AddArgs),
+    /// Remove a regex from the list of regexes
+    Remove(RemoveArgs),
+    /// List all regexes
+    List,
+}
+#[derive(Args, Debug)]
+pub struct AddArgs {
+    /// Name of the regex
+    #[arg(short, long)]
+    pub name: String,
+    /// The regex to add
+    #[arg(short, long)]
+    pub regex: String,
+}
+
+#[derive(Args, Debug)]
+pub struct RemoveArgs {
+    /// The name of the regex to remove
+    #[arg(short, long)]
+    name: String,
 }
 
 const VERSION_MESSAGE: &str = concat!(
