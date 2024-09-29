@@ -42,7 +42,9 @@ serde_json = "1.0.125"
 signal-hook = "0.3.17"
 strip-ansi-escapes = "0.2.0"
 strum = { version = "0.26.3", features = ["derive"] }
-tokio = { version = "1.39.3", features = ["full"] }
+tokio = { git = "https://github.com/tokio-rs/tokio.git", branch = "master", features = [
+    "full",
+] }
 tokio-util = "0.7.11"
 tracing = "0.1.40"
 tracing-error = "0.2.0"
