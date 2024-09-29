@@ -2283,15 +2283,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2b070231665d27ad9ec9b8df639893f46727666c6767db40317fbe920a5d998"
 dependencies = [
  "backtrace",
- "pin-project-lite",
-]
-
-[[package]]
-name = "tokio"
-version = "1.40.0"
-source = "git+https://github.com/tokio-rs/tokio.git?branch=master#2c14f88c90947b5fd845892b3d968f7b342db04e"
-dependencies = [
- "backtrace",
  "bytes",
  "libc",
  "mio",
@@ -2306,7 +2297,8 @@ dependencies = [
 [[package]]
 name = "tokio-macros"
 version = "2.4.0"
-source = "git+https://github.com/tokio-rs/tokio.git?branch=master#2c14f88c90947b5fd845892b3d968f7b342db04e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "693d596312e88961bc67d7f1f97af8a70227d9f90c31bba5806eec004978d752"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2323,7 +2315,7 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "pin-project-lite",
- "tokio 1.40.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio",
 ]
 
 [[package]]
@@ -2457,7 +2449,7 @@ dependencies = [
  "signal-hook",
  "strip-ansi-escapes",
  "strum",
- "tokio 1.40.0 (git+https://github.com/tokio-rs/tokio.git?branch=master)",
+ "tokio",
  "tokio-util",
  "tracing",
  "tracing-error",
