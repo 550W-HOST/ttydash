@@ -1,6 +1,6 @@
 [package]
 name = "ttydash"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "A terminal dashboard for custom monitoring."
 authors = ["PuQing <me@puqing.work>"]
