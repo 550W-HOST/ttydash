@@ -74,7 +74,7 @@ impl Dash {
             three_eighths: "⣠",
             one_quarter: "⣀",
             one_eighth: "⢀",
-            empty: "⠀",
+            empty: " ",
         };
         let instance = Self {
             title,

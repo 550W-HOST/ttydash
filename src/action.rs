@@ -10,7 +10,6 @@ pub enum Action {
     Resume,
     Quit,
     ClearScreen,
-    DataUpdate,
     Error(String),
     Help,
 }

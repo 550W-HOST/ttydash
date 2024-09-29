@@ -8,12 +8,15 @@ mod action;
 mod app;
 mod cli;
 mod components;
+mod config;
+mod errors;
 mod logging;
 mod tui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    logging::init()?;
+    crate::errors::init()?;
+    crate::logging::init()?;
 
     let args = Cli::parse();
     let mut app = App::new(args.tick_rate, args.frame_rate, args.title, args.unit)?;

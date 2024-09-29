@@ -1,79 +1,35 @@
-use std::collections::HashMap;
-
 use color_eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use derive_deref::{Deref, DerefMut};
+use crossterm::event::KeyEvent;
 use ratatui::prelude::Rect;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{debug, info};
 
 use crate::{
     action::Action,
     components::{dash::Dash, fps::FpsCounter, Component},
+    config::Config,
     tui::{Event, Tui},
 };
 
 use crate::cli::Unit;
-
-#[derive(Clone, Debug, Default, Deref, DerefMut)]
-pub struct KeyBindings {
-    bindings: HashMap<Vec<KeyEvent>, Action>,
-}
-/// A structure to manage key bindings for actions.
-///
-/// # Methods
-///
-/// * `new` - Creates a new instance of `KeyBindings`.
-/// * `bind` - Binds a vector of `KeyEvent` to an `Action`.
-/// * `bind_keys` - Binds a vector of tuples containing `KeyCode` and `KeyModifiers` to an `Action`.
-/// * `get` - Retrieves the `Action` associated with a vector of `KeyEvent`, if it exists.
-impl KeyBindings {
-    pub fn new() -> Self {
-        Self {
-            bindings: HashMap::new(),
-        }
-    }
-    pub fn bind(&mut self, keys: Vec<KeyEvent>, action: Action) {
-        self.bindings.insert(keys, action);
-    }
-    /// Binds multiple keys to a single action.
-    ///
-    /// # Arguments
-    ///
-    /// * `keys` - A vector of tuples where each tuple contains a `KeyCode` and `KeyModifiers`.
-    /// * `action` - The action to be performed when any of the keys are pressed.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// keybindings.bind_keys(
-    ///     vec![
-    ///         (KeyCode::Char('Q'), KeyModifiers::NONE),
-    ///         (KeyCode::Char('q'), KeyModifiers::NONE),
-    ///     ],
-    ///     Action::Quit,
-    /// );
-    /// ```
-    pub fn bind_keys(&mut self, keys: Vec<(KeyCode, KeyModifiers)>, action: Action) {
-        for (key, modifier) in keys {
-            self.bind(vec![KeyEvent::new(key, modifier)], action.clone());
-        }
-    }
-    pub fn get(&self, keys: &Vec<KeyEvent>) -> Option<&Action> {
-        self.bindings.get(keys)
-    }
-}
-
 pub struct App {
+    config: Config,
     tick_rate: f64,
     frame_rate: f64,
     components: Vec<Box<dyn Component>>,
     should_quit: bool,
     should_suspend: bool,
+    mode: Mode,
     last_tick_key_events: Vec<KeyEvent>,
     action_tx: mpsc::UnboundedSender<Action>,
     action_rx: mpsc::UnboundedReceiver<Action>,
-    keybindings: KeyBindings,
+}
+
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Mode {
+    #[default]
+    Home,
 }
 
 impl App {
@@ -84,21 +40,6 @@ impl App {
         units: Vec<Unit>,
     ) -> Result<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
-        let mut keybindings = KeyBindings::new();
-        keybindings.bind_keys(
-            vec![
-                (KeyCode::Char('Q'), KeyModifiers::NONE),
-                (KeyCode::Char('q'), KeyModifiers::NONE),
-            ],
-            Action::Quit,
-        );
-        keybindings.bind_keys(
-            vec![
-                (KeyCode::Char('s'), KeyModifiers::CONTROL),
-                (KeyCode::Char('S'), KeyModifiers::CONTROL),
-            ],
-            Action::Suspend,
-        );
 
         Ok(Self {
             tick_rate,
@@ -109,10 +50,11 @@ impl App {
             ],
             should_quit: false,
             should_suspend: false,
+            config: Config::new()?,
+            mode: Mode::Home,
             last_tick_key_events: Vec::new(),
             action_tx,
             action_rx,
-            keybindings,
         })
     }
 
@@ -124,6 +66,9 @@ impl App {
 
         for component in self.components.iter_mut() {
             component.register_action_handler(self.action_tx.clone())?;
+        }
+        for component in self.components.iter_mut() {
+            component.register_config_handler(self.config.clone())?;
         }
         for component in self.components.iter_mut() {
             component.init(tui.size()?)?;
@@ -171,16 +116,21 @@ impl App {
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
         let action_tx = self.action_tx.clone();
-        info!("Got key event: {key:?}");
-        match self.keybindings.get(&vec![key]) {
+        let Some(keymap) = self.config.keybindings.get(&self.mode) else {
+            return Ok(());
+        };
+        match keymap.get(&vec![key]) {
             Some(action) => {
                 info!("Got action: {action:?}");
-                action_tx.send(action.clone())?
+                action_tx.send(action.clone())?;
             }
             _ => {
+                // If the key was not handled as a single key action,
+                // then consider it for multi-key combinations.
                 self.last_tick_key_events.push(key);
+
                 // Check for multi-key combinations
-                if let Some(action) = self.keybindings.get(&self.last_tick_key_events) {
+                if let Some(action) = keymap.get(&self.last_tick_key_events) {
                     info!("Got action: {action:?}");
                     action_tx.send(action.clone())?;
                 }

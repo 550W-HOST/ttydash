@@ -3,8 +3,10 @@ use clap::ValueEnum;
 use std::str::FromStr;
 use strum::Display;
 
+use crate::config::get_config_dir;
+use crate::config::get_data_dir;
+
 #[derive(ValueEnum, Debug, Clone, Display)]
-// #[clap(rename_all = "kebab_case")]
 pub enum Unit {
     Ms,
     S,
@@ -66,10 +68,16 @@ const VERSION_MESSAGE: &str = concat!(
 pub fn version() -> String {
     let author = clap::crate_authors!();
 
+    let config_dir_path = get_config_dir().display().to_string();
+    let data_dir_path = get_data_dir().display().to_string();
+
     format!(
         "\
 {VERSION_MESSAGE}
 
-Authors: {author}"
+Authors: {author}
+
+Config directory: {config_dir_path}
+Data directory: {data_dir_path}"
     )
 }
