@@ -1,56 +1,10 @@
+use clap::ArgAction;
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
-use clap::ValueEnum;
-use strum::Display;
 
 use crate::config::get_config_dir;
 use crate::config::get_data_dir;
-
-#[derive(Debug, Clone, Display)]
-pub enum Unit {
-    Ms,
-    S,
-    MB,
-    KB,
-    GB,
-    KiB,
-    MiB,
-    GiB,
-}
-
-impl ValueEnum for Unit {
-    fn value_variants<'a>() -> &'a [Self] {
-        &[
-            Unit::Ms,
-            Unit::S,
-            Unit::MB,
-            Unit::KB,
-            Unit::GB,
-            Unit::KiB,
-            Unit::MiB,
-            Unit::GiB,
-        ]
-    }
-
-    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
-        Some(clap::builder::PossibleValue::new(self.to_string()))
-    }
-
-    fn from_str(input: &str, _ignore_case: bool) -> Result<Self, String> {
-        match input {
-            "ms" => Ok(Unit::Ms),
-            "s" => Ok(Unit::S),
-            "mb" => Ok(Unit::MB),
-            "kb" => Ok(Unit::KB),
-            "gb" => Ok(Unit::GB),
-            "kib" => Ok(Unit::KiB),
-            "mib" => Ok(Unit::MiB),
-            "gib" => Ok(Unit::GiB),
-            _ => Err(format!("Unknown unit: {}", input)),
-        }
-    }
-}
 
 #[derive(Parser, Debug)]
 #[command(author, version = version(), about)]
@@ -67,13 +21,29 @@ pub struct Cli {
     #[arg(short, long, value_name = "STRING")]
     pub titles: Option<Vec<String>>,
 
-    /// Unit to be used in the chart
+    /// Unit to be used in the chart (e.g. "ms", "MB")
     #[arg(short, long)]
-    pub units: Option<Vec<Unit>>,
+    pub units: Option<Vec<String>>,
 
     /// Index vector to be used in the chart
     #[arg(short, long, value_name = "INT")]
     pub indices: Option<Vec<usize>>,
+
+    /// Group together to show multiple charts in the same window
+    #[clap(
+        short,
+        long,
+        default_missing_value("true"),
+        default_value("false"),
+        num_args(0..=1),
+        require_equals(true),
+        action = ArgAction::Set,
+    )]
+    pub group: Option<bool>,
+
+    /// Update frequency, i.e. number of milliseconds between updates
+    #[arg(long, value_name = "INT", default_value_t = 1000)]
+    pub update_frequency: u64,
 
     #[command(subcommand)]
     pub cmd: Option<Commands>,

@@ -33,14 +33,7 @@ while true; echo 1; sleep 0.5; end | ttydash -t "🌟 Title"
 ```
 
 #### **Adding Units** (Optional)
-If each line of data comes with a unit (e.g., "ms"), you can specify the unit with the `-u` flag. The unit can be one of the following:
-
-- ⏱️ `ms` (milliseconds)
-- ⏳ `s` (seconds)
-- 📦 `mb` (megabytes)
-- 🧑‍💻 `kb` (kilobytes)
-- 💽 `gb` (gigabytes)
-- 📊 `ki-b` (kibibytes)
+If each line of data comes with a unit (e.g., "ms"), you can specify the unit with the `-u` flag. 
 
 Example 1️:
 ```bash
@@ -63,29 +56,45 @@ while true; echo "1 2 3"; sleep 0.5; end | ttydash
 ### 🎯 **Plot Specific Data Points** Using the `-i` Flag
 If you only want to plot specific data points, you can use the `-i` flag to select their index. For example:
 ```bash
-while true; echo "1 2 3"; sleep 0.5; end | ttydash -i 1 2
+while true; echo "1 2 3"; sleep 0.5; end | ttydash -i 1 -i 2
 ```
 In this example, only the data at **index 1** and **index 2** will be plotted.
 
 👉 **Note**: You can switch the sequence of the index as needed. For example:
 ```bash
-ttydash -i 2 1
+ttydash -i 2 -i 1
 ```
 This will plot **index 2** first, followed by **index 1**.
 
+### 📈 **Group Chart**
+
+```bash
+while true; echo "1 2 3"; sleep 0.5; end | ttydash -g
+```
+
+![](./assets/group_chart.png)
 
 ## flags
 
 ```bash
-A rust based tty plot
+A terminal dashboard for custom monitoring.
 
-Usage: ttydash [OPTIONS]
+Usage: ttydash [OPTIONS] [COMMAND]
+
+Commands:
+  add     Add a new regex to the list of regexes
+  remove  Remove a regex from the list of regexes
+  list    List all regexes
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
-      --tick-rate <FLOAT>   Tick rate, i.e. number of ticks per second [default: 4]
-  -f, --frame-rate <FLOAT>  Frame rate, i.e. number of frames per second [default: 60]
-  -t, --title <STRING>      Chart title, will be shown at the top of the chart
-  -u, --unit <UNIT>         Unit to be used in the chart [possible values: ms, s, mb, kb, gb, ki-b, mi-b, gi-b]
-  -h, --help                Print help
-  -V, --version             Print version
+      --tick-rate <FLOAT>       Tick rate, i.e. number of ticks per second [default: 4]
+  -f, --frame-rate <FLOAT>      Frame rate, i.e. number of frames per second [default: 60]
+  -t, --titles <STRING>         Chart title, will be shown at the top of the chart
+  -u, --units <UNITS>           Unit to be used in the chart (e.g. "ms", "MB")
+  -i, --indices <INT>           Index vector to be used in the chart
+  -g, --group[=<GROUP>]         Group together to show multiple charts in the same window [default: false] [possible values: true, false]
+      --update-frequency <INT>  Update frequency, i.e. number of milliseconds between updates [default: 1000]
+  -h, --help                    Print help
+  -V, --version                 Print version
 ```

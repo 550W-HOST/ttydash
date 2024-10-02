@@ -4,12 +4,10 @@ use std::sync::{
 };
 
 use super::Component;
-use crate::{
-    action::Action,
-    cli::{Cli, Unit},
-};
+use crate::{action::Action, cli::Cli};
 use color_eyre::Result;
 
+use libc::group;
 use ratatui::{prelude::*, widgets::*};
 
 use symbols::bar;
@@ -64,10 +62,11 @@ impl Default for DashState {
 pub struct Dash {
     bar_set: bar::Set,
     update_frequency: u64,
+    group: bool,
 
     state: Arc<RwLock<Vec<DashState>>>,
     titles: Option<Vec<String>>,
-    units: Vec<Unit>,
+    units: Vec<String>,
     indices: Option<Vec<usize>>,
 
     command_tx: Option<UnboundedSender<Action>>,
@@ -93,9 +92,10 @@ impl Dash {
             titles: args.titles,
             state: Arc::new(RwLock::new(vec![DashState::default()])),
             units,
+            group: args.group.unwrap_or(false),
             indices: args.indices,
             command_tx: None,
-            update_frequency: 1000,
+            update_frequency: args.update_frequency,
             bar_set,
             stop_signal: stop_signal.clone(),
         };
@@ -167,6 +167,95 @@ impl Drop for Dash {
 }
 
 impl Dash {
+    fn draw_grouped_chart(&mut self, frame: &mut Frame, area: &Rect) -> Result<()> {
+        let state = self.state.read().unwrap();
+        let window_size = (area.width - 1) / state.len() as u16;
+
+        // Create time labels at intervals of 30, up to window_size - 5
+        let time_labels = (1..)
+            .map(|i| i * 30)
+            .take_while(|&t| t <= window_size - 5)
+            .collect::<Vec<_>>();
+
+        let mut span_vec = vec![];
+        let mut last_label_len = 0;
+
+        // Generate time markers for the chart axis
+        for &time in &time_labels {
+            let pos = window_size - time - 1;
+            if pos < window_size {
+                // Add spacing and time marker (e.g., "30s", "60s") with a line separator
+                span_vec.push(Span::raw("─".repeat(30 * state.len() - last_label_len)));
+                span_vec.push(Span::raw("├"));
+                span_vec.push(Span::styled(format!("{}s", time), Style::default().gray()));
+                last_label_len = format!("{}s", time).len() + 1;
+            }
+        }
+
+        span_vec.reverse(); // Reverse the order to display correctly on the chart
+
+        // Initialize the bar chart with styling and layout
+        let mut chart = BarChart::default()
+            .bar_set(self.bar_set.clone())
+            .bar_gap(0)
+            .block(
+                Block::default()
+                    .border_type(BorderType::Rounded)
+                    .title(Line::from("Group Chart").right_aligned()) // Add chart title
+                    .title_bottom(Line::from(span_vec)) // Add time markers
+                    .title_alignment(Alignment::Right)
+                    .borders(Borders::ALL),
+            )
+            .bar_width(1)
+            .group_gap(0);
+
+        // Define a color map to style the bars
+        let color_map = vec![
+            Color::Green,
+            Color::Red,
+            Color::Yellow,
+            Color::Blue,
+            Color::Magenta,
+            Color::Cyan,
+            Color::White,
+        ];
+
+        // Map the grouped bars and create bar groups
+        let grouped_bars = 0..window_size;
+
+        // Generate the bar groups with their corresponding data and styles
+        let mut bars = grouped_bars
+            .map(|i| {
+                BarGroup::default().bars(
+                    &(0..state.len())
+                        .map(|n| {
+                            let state_n = &state[n];
+                            // Fetch the value from state and create the Bar
+                            let value =
+                                state_n.data[state_n.data.len().saturating_sub((i + 1).into())];
+                            Bar::default()
+                                .value(value as u64)
+                                .text_value("".to_owned()) // No text value displayed for the bars
+                                .style(Style::default().fg(color_map[n % color_map.len()]))
+                            // Style based on color map
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        bars.reverse(); // Reverse the bar order to match display order
+
+        // Add each bar group to the chart
+        bars.iter().for_each(|bar_group| {
+            chart = chart.clone().data(bar_group.clone());
+        });
+
+        // Render the chart on the frame
+        frame.render_widget(chart, *area);
+        Ok(())
+    }
+
     fn draw_chart(&mut self, frame: &mut Frame, area: &Rect, i: usize) -> Result<()> {
         let title = self
             .titles
@@ -251,17 +340,21 @@ impl Component for Dash {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let state = self.state.read().unwrap();
-
-        let num_chart_states = state.len();
-        // split the area
-        let chunks =
-            Layout::horizontal(vec![Constraint::Percentage(100); num_chart_states]).split(area);
-        // release the lock
-        drop(state);
-        for (i, chunk) in chunks.iter().enumerate() {
-            self.draw_chart(frame, chunk, i)?;
+        if !self.group {
+            let state = self.state.read().unwrap();
+            let num_chart_states = state.len();
+            // split the area
+            let chunks =
+                Layout::horizontal(vec![Constraint::Percentage(100); num_chart_states]).split(area);
+            // release the lock
+            drop(state);
+            for (i, chunk) in chunks.iter().enumerate() {
+                self.draw_chart(frame, chunk, i)?;
+            }
+        } else {
+            self.draw_grouped_chart(frame, &area)?;
         }
+
         Ok(())
     }
 }
