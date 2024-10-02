@@ -2,13 +2,12 @@ use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
 use clap::ValueEnum;
-use std::str::FromStr;
 use strum::Display;
 
 use crate::config::get_config_dir;
 use crate::config::get_data_dir;
 
-#[derive(ValueEnum, Debug, Clone, Display)]
+#[derive(Debug, Clone, Display)]
 pub enum Unit {
     Ms,
     S,
@@ -20,11 +19,26 @@ pub enum Unit {
     GiB,
 }
 
-impl FromStr for Unit {
-    type Err = ();
+impl ValueEnum for Unit {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[
+            Unit::Ms,
+            Unit::S,
+            Unit::MB,
+            Unit::KB,
+            Unit::GB,
+            Unit::KiB,
+            Unit::MiB,
+            Unit::GiB,
+        ]
+    }
 
-    fn from_str(input: &str) -> Result<Unit, Self::Err> {
-        match input.to_lowercase().as_str() {
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        Some(clap::builder::PossibleValue::new(self.to_string()))
+    }
+
+    fn from_str(input: &str, _ignore_case: bool) -> Result<Self, String> {
+        match input {
             "ms" => Ok(Unit::Ms),
             "s" => Ok(Unit::S),
             "mb" => Ok(Unit::MB),
@@ -33,7 +47,7 @@ impl FromStr for Unit {
             "kib" => Ok(Unit::KiB),
             "mib" => Ok(Unit::MiB),
             "gib" => Ok(Unit::GiB),
-            _ => Err(()),
+            _ => Err(format!("Unknown unit: {}", input)),
         }
     }
 }
@@ -51,11 +65,15 @@ pub struct Cli {
 
     /// Chart title, will be shown at the top of the chart
     #[arg(short, long, value_name = "STRING")]
-    pub title: Option<String>,
+    pub titles: Option<Vec<String>>,
 
     /// Unit to be used in the chart
     #[arg(short, long)]
-    pub units: Vec<Unit>,
+    pub units: Option<Vec<Unit>>,
+
+    /// Index vector to be used in the chart
+    #[arg(short, long, value_name = "INT")]
+    pub indices: Option<Vec<usize>>,
 
     #[command(subcommand)]
     pub cmd: Option<Commands>,

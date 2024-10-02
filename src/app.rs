@@ -7,12 +7,11 @@ use tracing::{debug, info};
 
 use crate::{
     action::Action,
-    components::{dash::Dash, fps::FpsCounter, Component},
+    components::{dash::Dash, Component},
     config::Config,
     tui::{Event, Tui},
 };
 
-use crate::cli::Unit;
 pub struct App {
     config: Config,
     tick_rate: f64,
@@ -33,21 +32,12 @@ pub enum Mode {
 }
 
 impl App {
-    pub fn new(
-        tick_rate: f64,
-        frame_rate: f64,
-        title: Option<String>,
-        units: Vec<Unit>,
-    ) -> Result<Self> {
+    pub fn new(args: crate::cli::Cli) -> Result<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
-
         Ok(Self {
-            tick_rate,
-            frame_rate,
-            components: vec![
-                Box::new(Dash::new(title, units)),
-                // Box::new(FpsCounter::default()),
-            ],
+            tick_rate: args.tick_rate,
+            frame_rate: args.frame_rate,
+            components: vec![Box::new(Dash::new(args))],
             should_quit: false,
             should_suspend: false,
             config: Config::new()?,
