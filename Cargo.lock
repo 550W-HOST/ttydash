@@ -2426,7 +2426,7 @@ dependencies = [
 
 [[package]]
 name = "ttydash"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "better-panic",
