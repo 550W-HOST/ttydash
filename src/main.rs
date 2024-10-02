@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     } else {
-        let mut app = App::new(args.tick_rate, args.frame_rate, args.title, args.unit)?;
+        let mut app = App::new(args.tick_rate, args.frame_rate, args.title, args.units)?;
         app.run().await?;
     }
     Ok(())

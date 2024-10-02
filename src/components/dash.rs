@@ -1,4 +1,7 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, RwLock,
+};
 
 use super::Component;
 use crate::{action::Action, cli::Unit};
@@ -9,14 +12,14 @@ use ratatui::{prelude::*, widgets::*};
 use symbols::bar;
 use tokio::{io::AsyncBufReadExt, sync::mpsc::UnboundedSender, task};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DashState {
     data: Vec<f64>,
     unit: String,
-    true_length: usize,
-    min: f64,
-    max: f64,
-    avg: f64,
+    length: usize,
+    min_value: f64,
+    max_value: f64,
+    average: f64,
 }
 
 impl DashState {
@@ -24,27 +27,27 @@ impl DashState {
         Self {
             data: vec![0.0; size],
             unit: String::new(),
-            true_length: 0,
-            min: f64::INFINITY,
-            max: f64::NEG_INFINITY,
-            avg: 0.0,
+            length: 0,
+            min_value: f64::INFINITY,
+            max_value: f64::NEG_INFINITY,
+            average: 0.0,
         }
     }
 
     fn calculate_stats(&mut self) {
-        let data_slice = &self.data[self.data.len() - self.true_length..];
+        let data_slice = &self.data[self.data.len() - self.length..];
         let sum: f64 = data_slice.iter().sum();
         let len = data_slice.len() as f64;
-        self.avg = sum / len;
-        self.min = data_slice.iter().copied().fold(f64::INFINITY, f64::min);
-        self.max = data_slice.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        self.average = sum / len;
+        self.min_value = data_slice.iter().copied().fold(f64::INFINITY, f64::min);
+        self.max_value = data_slice.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     }
 
     fn update(&mut self, value: f64) {
         self.data.rotate_left(1);
         self.data[0] = value;
         self.calculate_stats();
-        self.true_length = std::cmp::min(self.true_length + 1, self.data.len());
+        self.length = std::cmp::min(self.length + 1, self.data.len());
     }
 }
 
@@ -59,12 +62,14 @@ pub struct Dash {
     title: Option<String>,
     units: Vec<Unit>,
     command_tx: Option<UnboundedSender<Action>>,
-    state: Arc<RwLock<DashState>>,
+    state: Arc<RwLock<Vec<DashState>>>,
+    update_frequency: u64,
     bar_set: bar::Set,
+    stop_signal: Arc<AtomicBool>,
 }
 
 impl Dash {
-    pub fn new(title: Option<String>, unit: Vec<Unit>) -> Self {
+    pub fn new(title: Option<String>, units: Vec<Unit>) -> Self {
         let bar_set = bar::Set {
             full: "⣿",
             seven_eighths: "⣾",
@@ -76,27 +81,30 @@ impl Dash {
             one_eighth: "⢀",
             empty: " ",
         };
+        let stop_signal = Arc::new(AtomicBool::new(false));
         let instance = Self {
             title,
-            units: unit,
+            state: Arc::new(RwLock::new(vec![DashState::default(); units.len()])),
+            units,
             command_tx: None,
-            state: Arc::new(RwLock::new(DashState::default())),
+            update_frequency: 1000,
             bar_set,
+            stop_signal: stop_signal.clone(),
         };
         let cloned_instance = instance.clone();
-        task::spawn(cloned_instance.update_chart());
+        task::spawn(cloned_instance.update_chart(stop_signal));
         instance
     }
 
-    async fn update_chart(self) {
+    async fn update_chart(self, stop_signal: Arc<AtomicBool>) {
         let stdin = tokio::io::stdin();
         let mut lines = tokio::io::BufReader::new(stdin).lines();
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        while !stop_signal.load(Ordering::Relaxed) {
+            tokio::time::sleep(tokio::time::Duration::from_millis(self.update_frequency)).await;
             let line = lines.next_line().await.unwrap().unwrap();
             let mut state = self.state.write().unwrap();
             if !self.units.is_empty() {
-                for unit in &self.units {
+                for (i, unit) in self.units.iter().enumerate() {
                     let unit_str = unit.to_string();
                     // parse the value with the unit
                     let re = regex::Regex::new(&format!(r"(?i)\b(\d+(\.\d+)?)\s*{}\b", unit_str))
@@ -106,17 +114,93 @@ impl Dash {
                             .get(1)
                             .and_then(|v| v.as_str().parse::<f64>().ok())
                             .unwrap_or(0.0);
-                        state.update(value);
-                        state.unit = unit_str.to_string();
-                        break;
+                        // state.update(value);
+                        state[i].update(value);
+                        state[i].unit = unit_str.to_string();
                     }
                 }
-            } else if let Some(value_str) = line.split_whitespace().next() {
-                if let Ok(value) = value_str.parse::<f64>() {
-                    state.update(value);
+            } else if let Some(_) = line.split_whitespace().next() {
+                let mut index = 0;
+                for value_str in line.split_whitespace() {
+                    if let Ok(value) = value_str.parse::<f64>() {
+                        if index < state.len() {
+                            state[index].update(value);
+                        } else {
+                            state.push(DashState::default());
+                            state[index].update(value);
+                        }
+                        index += 1;
+                    }
                 }
             }
         }
+        // release the IO
+        drop(lines);
+    }
+}
+
+impl Drop for Dash {
+    fn drop(&mut self) {
+        self.stop_signal.store(true, Ordering::Relaxed);
+    }
+}
+
+impl Dash {
+    fn draw_chart(&mut self, frame: &mut Frame, area: &Rect, title: &str, i: usize) -> Result<()> {
+        let state = self.state.read().unwrap();
+        let state = &state[i];
+        let chart_state = &state.data;
+        let width = area.width - 1;
+        let start = chart_state.len().saturating_sub(width as usize);
+        let bars = chart_state[start..]
+            .iter()
+            .map(|&value| Bar::default().value(value as u64).text_value("".to_owned()))
+            .collect::<Vec<_>>();
+
+        let time_labels = (1..)
+            .map(|i| i * 30)
+            .take_while(|&t| t <= width - 5)
+            .collect::<Vec<_>>();
+        let mut span_vec = vec![];
+        let mut last_label_len = 0;
+        for &time in &time_labels {
+            let pos = width - time - 1;
+            if pos < (width) {
+                span_vec.push(Span::raw("─".repeat(30 - last_label_len)));
+                span_vec.push(Span::raw("├"));
+                span_vec.push(Span::styled(format!("{}s", time), Style::default().gray()));
+                last_label_len = format!("{}s", time).len() + 1;
+            }
+        }
+        span_vec.reverse();
+        let chart = BarChart::default()
+            .data(BarGroup::default().bars(&bars))
+            .bar_set(self.bar_set.clone())
+            .bar_gap(0)
+            .bar_style(Style::default().fg(Color::Green))
+            .block(
+                Block::default()
+                    .border_type(BorderType::Rounded)
+                    .title(Line::from(title).right_aligned())
+                    .title_bottom(Line::from(span_vec))
+                    .title_alignment(Alignment::Right)
+                    .borders(Borders::ALL),
+            )
+            .bar_width(1);
+        frame.render_widget(chart, *area);
+
+        let [top, _] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(*area);
+
+        let message = format!(
+            "Avg: {:.2} {} Min: {:.2} {} Max: {:.2} {}",
+            state.average, state.unit, state.min_value, state.unit, state.max_value, state.unit
+        );
+        let span = Span::styled(message, Style::new().dim());
+        let paragraph = Paragraph::new(span)
+            .left_aligned()
+            .block(Block::default().padding(Padding::horizontal(2)));
+        frame.render_widget(paragraph, top);
+        Ok(())
     }
 }
 
@@ -141,62 +225,69 @@ impl Component for Dash {
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let title = self.title.clone().unwrap_or_default();
-        let width = area.width - 1;
         let state = self.state.read().unwrap();
-        let chart_state = &state.data;
 
-        let len = chart_state.len();
-        let start = len.saturating_sub(width as usize);
-        let bars = chart_state[start..]
-            .iter()
-            .map(|&value| Bar::default().value(value as u64))
-            .collect::<Vec<_>>();
-
-        let max_time = width;
-        let time_labels = (1..)
-            .map(|i| i * 30)
-            .take_while(|&t| t <= max_time - 5)
-            .collect::<Vec<_>>();
-        let mut span_vec = vec![];
-        let mut last_label_len = 0;
-        for &time in &time_labels {
-            let pos = width - time - 1;
-            if pos < (width) {
-                span_vec.push(Span::raw("─".repeat(30 - last_label_len)));
-                span_vec.push(Span::raw("├"));
-                span_vec.push(Span::styled(format!("{}s", time), Style::default().gray()));
-                last_label_len = format!("{}s", time).len() + 1;
-            }
+        let num_chart_states = state.len();
+        // split the area
+        let chunks =
+            Layout::horizontal(vec![Constraint::Percentage(100); num_chart_states]).split(area);
+        // release the lock
+        drop(state);
+        for (i, chunk) in chunks.iter().enumerate() {
+            self.draw_chart(frame, chunk, &title, i)?;
         }
-        span_vec.reverse();
-        let chart = BarChart::default()
-            .data(BarGroup::default().bars(&bars))
-            .bar_set(self.bar_set.clone())
-            .bar_gap(0)
-            .bar_style(Style::default().fg(Color::Green))
-            .block(
-                Block::default()
-                    .border_type(BorderType::Rounded)
-                    .title(Line::from(title).centered())
-                    .title_bottom(Line::from(span_vec))
-                    .title_alignment(Alignment::Right)
-                    .borders(Borders::ALL),
-            )
-            .bar_width(1);
-        frame.render_widget(chart, area);
 
-        let [top, _] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+        // let chart_state = &state.data;
 
-        let message = format!(
-            "Avg: {:.2} {} Min: {:.2} {} Max: {:.2} {}",
-            state.avg, state.unit, state.min, state.unit, state.max, state.unit
-        );
-        let span = Span::styled(message, Style::new().dim());
-        let paragraph = Paragraph::new(span)
-            .left_aligned()
-            .block(Block::default().padding(Padding::horizontal(2)));
-        frame.render_widget(paragraph, top);
+        // let start = chart_state.len().saturating_sub(width as usize);
+        // let bars = chart_state[start..]
+        //     .iter()
+        //     .map(|&value| Bar::default().value(value as u64))
+        //     .collect::<Vec<_>>();
 
+        // let time_labels = (1..)
+        //     .map(|i| i * 30)
+        //     .take_while(|&t| t <= width - 5)
+        //     .collect::<Vec<_>>();
+        // let mut span_vec = vec![];
+        // let mut last_label_len = 0;
+        // for &time in &time_labels {
+        //     let pos = width - time - 1;
+        //     if pos < (width) {
+        //         span_vec.push(Span::raw("─".repeat(30 - last_label_len)));
+        //         span_vec.push(Span::raw("├"));
+        //         span_vec.push(Span::styled(format!("{}s", time), Style::default().gray()));
+        //         last_label_len = format!("{}s", time).len() + 1;
+        //     }
+        // }
+        // span_vec.reverse();
+        // let chart = BarChart::default()
+        //     .data(BarGroup::default().bars(&bars))
+        //     .bar_set(self.bar_set.clone())
+        //     .bar_gap(0)
+        //     .bar_style(Style::default().fg(Color::Green))
+        //     .block(
+        //         Block::default()
+        //             .border_type(BorderType::Rounded)
+        //             .title(Line::from(title).centered())
+        //             .title_bottom(Line::from(span_vec))
+        //             .title_alignment(Alignment::Right)
+        //             .borders(Borders::ALL),
+        //     )
+        //     .bar_width(1);
+        // frame.render_widget(chart, area);
+
+        // let [top, _] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+
+        // let message = format!(
+        //     "Avg: {:.2} {} Min: {:.2} {} Max: {:.2} {}",
+        //     state.average, state.unit, state.min_value, state.unit, state.max_value, state.unit
+        // );
+        // let span = Span::styled(message, Style::new().dim());
+        // let paragraph = Paragraph::new(span)
+        //     .left_aligned()
+        //     .block(Block::default().padding(Padding::horizontal(2)));
+        // frame.render_widget(paragraph, top);
         Ok(())
     }
 }

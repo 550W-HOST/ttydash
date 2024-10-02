@@ -46,7 +46,7 @@ impl App {
             frame_rate,
             components: vec![
                 Box::new(Dash::new(title, units)),
-                Box::new(FpsCounter::default()),
+                // Box::new(FpsCounter::default()),
             ],
             should_quit: false,
             should_suspend: false,

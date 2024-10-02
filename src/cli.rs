@@ -55,7 +55,7 @@ pub struct Cli {
 
     /// Unit to be used in the chart
     #[arg(short, long)]
-    pub unit: Vec<Unit>,
+    pub units: Vec<Unit>,
 
     #[command(subcommand)]
     pub cmd: Option<Commands>,
