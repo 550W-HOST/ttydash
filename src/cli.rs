@@ -2,9 +2,18 @@ use clap::ArgAction;
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
+use clap::ValueEnum;
 
 use crate::config::get_config_dir;
 use crate::config::get_data_dir;
+
+#[derive(Debug, ValueEnum, Clone, PartialEq, Eq, Default)]
+pub enum Layout {
+    Horizontal,
+    Vertical,
+    #[default]
+    Auto,
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version = version(), about)]
@@ -44,6 +53,10 @@ pub struct Cli {
     /// Update frequency, i.e. number of milliseconds between updates
     #[arg(long, value_name = "INT", default_value_t = 1000)]
     pub update_frequency: u64,
+
+    /// Layout of the chart
+    #[clap(short, long, value_name = "STRING", default_value("auto"))]
+    pub layout: Option<Layout>,
 
     #[command(subcommand)]
     pub cmd: Option<Commands>,

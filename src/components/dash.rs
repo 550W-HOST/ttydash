@@ -4,10 +4,12 @@ use std::sync::{
 };
 
 use super::Component;
-use crate::{action::Action, cli::Cli};
+use crate::{
+    action::Action,
+    cli::{self, Cli},
+};
 use color_eyre::Result;
 
-use libc::group;
 use ratatui::{prelude::*, widgets::*};
 
 use symbols::bar;
@@ -63,6 +65,7 @@ pub struct Dash {
     bar_set: bar::Set,
     update_frequency: u64,
     group: bool,
+    layout: cli::Layout,
 
     state: Arc<RwLock<Vec<DashState>>>,
     titles: Option<Vec<String>>,
@@ -97,6 +100,7 @@ impl Dash {
             command_tx: None,
             update_frequency: args.update_frequency,
             bar_set,
+            layout: args.layout.unwrap_or_default(),
             stop_signal: stop_signal.clone(),
         };
         let cloned_instance = instance.clone();
@@ -127,7 +131,7 @@ impl Dash {
                         state[i].unit = unit_str.to_string();
                     }
                 }
-            } else if let Some(_) = line.split_whitespace().next() {
+            } else if line.split_whitespace().next().is_some() {
                 let values: Vec<f64> = line
                     .split_whitespace()
                     .filter_map(|value_str| value_str.parse::<f64>().ok())
@@ -139,7 +143,7 @@ impl Dash {
                     }
                     indices
                         .iter()
-                        .filter_map(|&index| values.get(index - 1).map(|&value| value)) // Safe access to values
+                        .filter_map(|&index| values.get(index - 1).copied()) // Safe access to values
                         .enumerate()
                         .for_each(|(i, value)| state[i].update(value));
                 } else {
@@ -210,7 +214,7 @@ impl Dash {
             .group_gap(0);
 
         // Define a color map to style the bars
-        let color_map = vec![
+        let color_map = [
             Color::Green,
             Color::Red,
             Color::Yellow,
@@ -320,6 +324,18 @@ impl Dash {
     }
 }
 
+fn is_prime(n: usize) -> bool {
+    if n < 2 {
+        return false;
+    }
+    for i in 2..=((n as f64).sqrt() as usize) {
+        if n % i == 0 {
+            return false;
+        }
+    }
+    true
+}
+
 impl Component for Dash {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
@@ -344,8 +360,89 @@ impl Component for Dash {
             let state = self.state.read().unwrap();
             let num_chart_states = state.len();
             // split the area
-            let chunks =
-                Layout::horizontal(vec![Constraint::Percentage(100); num_chart_states]).split(area);
+            let chunks = match self.layout {
+                cli::Layout::Vertical => {
+                    Layout::vertical(vec![Constraint::Percentage(100); num_chart_states])
+                        .split(area)
+                        .iter()
+                        .copied()
+                        .collect::<Vec<_>>()
+                }
+                cli::Layout::Horizontal => {
+                    Layout::horizontal(vec![Constraint::Percentage(100); num_chart_states])
+                        .split(area)
+                        .iter()
+                        .copied()
+                        .collect::<Vec<_>>()
+                }
+                cli::Layout::Auto => {
+                    if is_prime(num_chart_states) {
+                        // grid + 1
+                        let (rows, cols) = match num_chart_states - 1 {
+                            1 => (1, 1),
+                            2 => (1, 2),
+                            _ => {
+                                let rows = (2..=num_chart_states - 1)
+                                    .rev()
+                                    .find(|&i| num_chart_states % i == 0)
+                                    .unwrap_or(1);
+                                let cols = num_chart_states / rows;
+                                (rows, cols)
+                            }
+                        };
+                        let row_constraints =
+                            vec![Constraint::Percentage((100 / rows + 1) as u16); rows + 1];
+                        let row_chunks = Layout::default()
+                            .direction(Direction::Vertical)
+                            .constraints(row_constraints)
+                            .split(area);
+                        let mut chunks = vec![];
+                        for row_chunk in row_chunks[1..].iter() {
+                            let col_constraints =
+                                vec![Constraint::Percentage((100 / cols) as u16); cols];
+                            let col_chunks = Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints(col_constraints)
+                                .split(*row_chunk);
+                            let col_chunks_vec = col_chunks.iter().copied().collect::<Vec<_>>();
+                            chunks.extend(col_chunks_vec);
+                        }
+                        chunks.insert(0, row_chunks[0]);
+                        chunks
+                    } else {
+                        let (rows, cols) = match num_chart_states {
+                            1 => (1, 1),
+                            2 => (1, 2),
+                            _ => {
+                                let rows = (2..=num_chart_states - 1)
+                                    .rev()
+                                    .find(|&i| num_chart_states % i == 0)
+                                    .unwrap_or(1);
+                                let cols = num_chart_states / rows;
+                                (rows, cols)
+                            }
+                        };
+                        let row_constraints =
+                            vec![Constraint::Percentage((100 / rows) as u16); rows];
+                        let row_chunks = Layout::default()
+                            .direction(Direction::Vertical)
+                            .constraints(row_constraints)
+                            .split(area);
+                        let mut chunks = vec![];
+                        for row_chunk in row_chunks.iter() {
+                            let col_constraints =
+                                vec![Constraint::Percentage((100 / cols) as u16); cols];
+                            let col_chunks = Layout::default()
+                                .direction(Direction::Horizontal)
+                                .constraints(col_constraints)
+                                .split(*row_chunk);
+                            let col_chunks_vec = col_chunks.iter().copied().collect::<Vec<_>>();
+                            chunks.extend(col_chunks_vec);
+                        }
+                        chunks
+                    }
+                }
+            };
             // release the lock
             drop(state);
             for (i, chunk) in chunks.iter().enumerate() {
@@ -354,7 +451,6 @@ impl Component for Dash {
         } else {
             self.draw_grouped_chart(frame, &area)?;
         }
-
         Ok(())
     }
 }
