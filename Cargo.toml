@@ -1,8 +1,8 @@
 [package]
 name = "ttydash"
-version = "0.1.12"
+version = "0.2.0"
 edition = "2021"
-description = "A terminal dashboard for custom monitoring."
+description = "A terminal-based dashboard for real-time data visualization."
 authors = ["PuQing <me@puqing.work>"]
 build = "build.rs"
 repository = "https://github.com/550W-HOST/ttydash"

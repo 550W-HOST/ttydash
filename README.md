@@ -10,6 +10,10 @@
 
 ![ttydash](./assets/Snipaste.png)
 
+Auto Layout
+
+![ttydash](./assets/grid.png)
+
 ## Installation
 
 ```bash
@@ -77,7 +81,7 @@ while true; echo "1 2 3"; sleep 0.5; end | ttydash -g
 ## flags
 
 ```bash
-A terminal dashboard for custom monitoring.
+A terminal-based dashboard for real-time data visualization.
 
 Usage: ttydash [OPTIONS] [COMMAND]
 
@@ -95,6 +99,7 @@ Options:
   -i, --indices <INT>           Index vector to be used in the chart
   -g, --group[=<GROUP>]         Group together to show multiple charts in the same window [default: false] [possible values: true, false]
       --update-frequency <INT>  Update frequency, i.e. number of milliseconds between updates [default: 1000]
+  -l, --layout <STRING>         Layout of the chart [default: auto] [possible values: horizontal, vertical, auto]
   -h, --help                    Print help
   -V, --version                 Print version
 ```
