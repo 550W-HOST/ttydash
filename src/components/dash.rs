@@ -170,35 +170,43 @@ impl Drop for Dash {
     }
 }
 
+fn generate_time_markers(window_size: u16, state_len: usize) -> Vec<Span<'static>> {
+    let time_labels = (1..)
+        .map(|i| i * 30)
+        .take_while(|&t| t <= window_size - 5)
+        .collect::<Vec<_>>();
+    time_labels
+        .iter()
+        .scan(0, |last_label_len, &time| {
+            let pos = window_size - time - 1;
+            if pos < window_size {
+                let time_marker = format!("{}s", time);
+                let time_marker_len = time_marker.len() + 1;
+                let spacing = "─".repeat(30 * state_len - *last_label_len);
+                *last_label_len = time_marker_len;
+                Some(vec![
+                    Span::raw(spacing),
+                    Span::raw("├"),
+                    Span::styled(time_marker, Style::default().gray()),
+                ])
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
+}
+
 impl Dash {
     fn draw_grouped_chart(&mut self, frame: &mut Frame, area: &Rect) -> Result<()> {
         let state = self.state.read().unwrap();
         let window_size = (area.width - 1) / state.len() as u16;
 
-        // Create time labels at intervals of 30, up to window_size - 5
-        let time_labels = (1..)
-            .map(|i| i * 30)
-            .take_while(|&t| t <= window_size - 5)
-            .collect::<Vec<_>>();
+        let span_vec = generate_time_markers(window_size, state.len());
 
-        let mut span_vec = vec![];
-        let mut last_label_len = 0;
-
-        // Generate time markers for the chart axis
-        for &time in &time_labels {
-            let pos = window_size - time - 1;
-            if pos < window_size {
-                // Add spacing and time marker (e.g., "30s", "60s") with a line separator
-                span_vec.push(Span::raw("─".repeat(30 * state.len() - last_label_len)));
-                span_vec.push(Span::raw("├"));
-                span_vec.push(Span::styled(format!("{}s", time), Style::default().gray()));
-                last_label_len = format!("{}s", time).len() + 1;
-            }
-        }
-
-        span_vec.reverse(); // Reverse the order to display correctly on the chart
-
-        // Initialize the bar chart with styling and layout
         let mut chart = BarChart::default()
             .bar_set(self.bar_set.clone())
             .bar_gap(0)
@@ -224,39 +232,44 @@ impl Dash {
             Color::White,
         ];
 
-        // Map the grouped bars and create bar groups
-        let grouped_bars = 0..window_size;
-
-        // Generate the bar groups with their corresponding data and styles
-        let mut bars = grouped_bars
+        let _bars = &(0..window_size)
             .map(|i| {
                 BarGroup::default().bars(
                     &(0..state.len())
                         .map(|n| {
                             let state_n = &state[n];
-                            // Fetch the value from state and create the Bar
                             let value =
                                 state_n.data[state_n.data.len().saturating_sub((i + 1).into())];
                             Bar::default()
                                 .value(value as u64)
-                                .text_value("".to_owned()) // No text value displayed for the bars
+                                .text_value("".to_owned())
                                 .style(Style::default().fg(color_map[n % color_map.len()]))
-                            // Style based on color map
                         })
                         .collect::<Vec<_>>(),
                 )
             })
-            .collect::<Vec<_>>();
+            .rev()
+            .for_each(|bar_group| {
+                chart = chart.clone().data(bar_group.clone());
+            });
 
-        bars.reverse(); // Reverse the bar order to match display order
-
-        // Add each bar group to the chart
-        bars.iter().for_each(|bar_group| {
-            chart = chart.clone().data(bar_group.clone());
-        });
-
-        // Render the chart on the frame
         frame.render_widget(chart, *area);
+
+        let max_value = state.iter().map(|s| s.max_value).fold(0.0, f64::max);
+
+        let [top, _] = Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(*area);
+        let y_message = format!("{:.0}{}", max_value, state[0].unit);
+        let y_span = Span::styled(y_message, Style::new().dim().fg(Color::DarkGray));
+        let y_paragraph = Paragraph::new(y_span)
+            .left_aligned()
+            .block(Block::default().padding(Padding {
+                left: 2,
+                right: 0,
+                top: 1,
+                bottom: 0,
+            }));
+        frame.render_widget(y_paragraph, top);
+
         Ok(())
     }
 
@@ -277,22 +290,7 @@ impl Dash {
             .map(|&value| Bar::default().value(value as u64).text_value("".to_owned()))
             .collect::<Vec<_>>();
 
-        let time_labels = (1..)
-            .map(|i| i * 30)
-            .take_while(|&t| t <= width - 5)
-            .collect::<Vec<_>>();
-        let mut span_vec = vec![];
-        let mut last_label_len = 0;
-        for &time in &time_labels {
-            let pos = width - time - 1;
-            if pos < (width) {
-                span_vec.push(Span::raw("─".repeat(30 - last_label_len)));
-                span_vec.push(Span::raw("├"));
-                span_vec.push(Span::styled(format!("{}s", time), Style::default().gray()));
-                last_label_len = format!("{}s", time).len() + 1;
-            }
-        }
-        span_vec.reverse();
+        let span_vec = generate_time_markers(width, 1);
         let chart = BarChart::default()
             .data(BarGroup::default().bars(&bars))
             .bar_set(self.bar_set.clone())
@@ -320,6 +318,21 @@ impl Dash {
             .left_aligned()
             .block(Block::default().padding(Padding::horizontal(2)));
         frame.render_widget(paragraph, top);
+
+        let [top, _] = Layout::vertical([Constraint::Length(2), Constraint::Min(0)]).areas(*area);
+        let max_value = state.max_value;
+        let y_message = format!("{:.0}{}", max_value, state.unit);
+        let y_span = Span::styled(y_message, Style::new().dim().fg(Color::DarkGray));
+        let y_paragraph = Paragraph::new(y_span)
+            .left_aligned()
+            .block(Block::default().padding(Padding {
+                left: 2,
+                right: 0,
+                top: 1,
+                bottom: 0,
+            }));
+        frame.render_widget(y_paragraph, top);
+
         Ok(())
     }
 }
